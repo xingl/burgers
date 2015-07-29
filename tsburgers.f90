@@ -2,10 +2,11 @@
 program tsburgers
   ! file_utils module takes care of input file and file i/o
   use file_utils, only: init_file_utils, finish_file_utils
-  ! fftw library is used to perform 1D c2c,c2r,r2c Fourier Transform
-  use fftw3
-
   implicit none
+
+  ! fftw library is used to perform 1D c2c,c2r,r2c Fourier Transform
+  include 'fftw3.f'
+
 
   ! basic parameters
   ! (kind=8) everywhere means values are in double precision
@@ -157,12 +158,13 @@ contains
     ! 2/3 rule is applied to avoid aliasing
     ! useful hi_nk is a third of hi_nx
     hi_nk = hi_nx/3+1
-    ! useful lo_nk is a third of lo_nx both positive and negative
-    lo_nk = 2*lo_nx/3+1
+
     ! as convention of fftw, output from x2k correspond to fk on this k-grid:
     ! 0, kf, 2*kf,...,(nx/2-1)*kf,-nx/2*kf,...,-kf
     ! lo_nk_brk is the position of the last useful wavenumber that is positive
     lo_nk_brk = lo_nx/3
+    ! useful lo_nk is a third of lo_nx both positive and negative
+    lo_nk = 2*(lo_nk_brk-1)+1
 
     allocate(xgrid(lo_nx))
     allocate(lo_kgrid(lo_nk), hi_kgrid(hi_nk))
@@ -255,8 +257,8 @@ contains
     lo_spectrum = 0.0 ; hi_spectrum = 0.0 
     
     !open file and write title for each column
-    call open_output_file (lo_spectrum_unit,'.lospectrum')
-    write(lo_spectrum_unit,'(3a15)') '#time', 'lo_k', 'lo|f(k)|**2'
+    !call open_output_file (lo_spectrum_unit,'.lospectrum')
+    !write(lo_spectrum_unit,'(3a15)') '#time', 'lo_k', 'lo|f(k)|**2'
 
     call open_output_file (hi_spectrum_unit,'.hispectrum')
     write(hi_spectrum_unit,'(3a15)') '#time', 'hi_k', 'hi|f(k)|**2'
@@ -310,7 +312,7 @@ contains
     allocate (lo_interaction(lo_nk), hi_interaction(hi_nk,lo_nx))
     lo_interaction = 0.0 ; hi_interaction = 0.0
     !call subroutines to calculate interaction
-    call get_lo_interaction (lo_interaction)
+    !call get_lo_interaction (lo_interaction)
     call get_hi_interaction (lo_fk, hi_fk, hi_interaction)
 
     ! centered scheme is used for viscosity and forcing terms
@@ -319,26 +321,12 @@ contains
 
     ! update of lo_fknew is split into two do loops because
     ! lo_nlk array have different indexing than lo_fk and others
-    do ik = 1, lo_nk_brk 
-       c = 0.5*lo_visc*(lo_kgrid(ik)/maxval(abs(hi_kgrid)))**2-0.5*lo_gamma(ik)
+    do ik = 1, lo_nk 
+       c = 0.5*lo_visc*(lo_kgrid(ik)/maxval(abs(hi_kgrid)))**2
        lo_fknew (ik) = (lo_fk(ik)*(1.0-0.5*dt*c)&
-            -0.5*dt*lo_nlk(ik)-0.5*dt*lo_interaction(ik))&
-            /(1.0+0.5*dt*c)
+            -0.5*dt*lo_nlk(ik)-0.5*dt*lo_interaction(ik)+&
+            0.5*dt*lo_gamma(ik))/(1.0+0.5*dt*c)
        ! checker: if lo_fknew is small set value to zero, if big stop and report
-       if (abs(lo_fknew(ik)).LE.1.0D-10) then
-          lo_fknew (ik) = 0.0
-       end if
-       if (abs(lo_fknew(ik)).GE.1.0D10) then
-          print *, 'lo_fknew blows up at time =', time
-          stop
-       end if
-    end do
-    do ik = lo_nk_brk+1, lo_nk
-       c = 0.5*lo_visc*(lo_kgrid(ik)/maxval(abs(hi_kgrid)))**2-0.5*lo_gamma(ik)
-       lo_fknew (ik) = (lo_fk(ik)*(1.0-0.5*dt*c)&
-            -0.5*dt*lo_nlk(ik-lo_nk+lo_nx)-0.5*dt*lo_interaction(ik))&
-            /(1.0+0.5*dt*c)
-       ! checker
        if (abs(lo_fknew(ik)).LE.1.0D-10) then
           lo_fknew (ik) = 0.0
        end if
@@ -357,10 +345,10 @@ contains
     ! the rest follows from equation of hi_fk
     do ik = 2, hi_nk
        do ix = 1, lo_nx
-          c = 0.5*hi_visc*(hi_kgrid(ik)/maxval(abs(hi_kgrid)))**2-0.5*hi_gamma(ik)
+          c = 0.5*hi_visc*(hi_kgrid(ik)/maxval(abs(hi_kgrid)))**2
           hi_fknew (ik,ix) = (hi_fk(ik,ix)*(1.0-0.5*dt*c)&
-               -0.5*dt*hi_nlk(ik,ix)-0.5*dt*hi_interaction(ik,ix))/&
-               (1.0+0.5*dt*c)
+               -0.5*dt*hi_nlk(ik,ix)-0.5*dt*hi_interaction(ik,ix)+&
+                0.5*dt*hi_gamma(ik))/(1.0+0.5*dt*c)
           ! checker
           if (abs(hi_fknew(ik,ix)).LE.1.0D-10) then
              hi_fknew(ik,ix) = 0.0
@@ -378,30 +366,16 @@ contains
     call get_hi_nonlinearity (hi_fknew, hi_nlk)
     
     ! call subroutines to calculate interactions from lo_fknew and hi_fknew
-    call get_lo_interaction (lo_interaction)
+    !call get_lo_interaction (lo_interaction)
     call get_hi_interaction (lo_fknew, hi_fknew, hi_interaction)
 
     ! update with full time step
-    do ik = 1, lo_nk_brk
-       c = 0.5*lo_visc*(lo_kgrid(ik)/maxval(abs(hi_kgrid)))**2-0.5*lo_gamma(ik)
+    do ik = 1, lo_nk
+       c = 0.5*lo_visc*(lo_kgrid(ik)/maxval(abs(hi_kgrid)))**2
        lo_fknew(ik) = (lo_fk(ik)*(1.0-dt*c)&
-            -dt*lo_nlk(ik)-dt*lo_interaction(ik))&
-            /(1.0+dt*c)
+            -dt*lo_nlk(ik)-dt*lo_interaction(ik)+&
+            dt*lo_gamma(ik))/(1.0+dt*c)
        ! checker                     
-       if (abs(lo_fknew(ik)).LE.1.0D-10) then
-          lo_fknew(ik) = 0.0
-       end if
-       if (abs(lo_fknew(ik)).GE.1.0D10) then
-          print *, 'lo_fknew blows up at time =', time
-          stop
-       end if
-    end do
-    do ik = lo_nk_brk+1, lo_nk
-       c = 0.5*lo_visc*(lo_kgrid(ik)/maxval(abs(hi_kgrid)))**2-0.5*lo_gamma(ik)
-       lo_fknew(ik) = (lo_fk(ik)*(1.0-dt*c)&
-            -dt*lo_nlk(ik-lo_nk+lo_nx)-dt*lo_interaction(ik))&
-            /(1.0+dt*c)
-       ! checker                                          
        if (abs(lo_fknew(ik)).LE.1.0D-10) then
           lo_fknew(ik) = 0.0
        end if
@@ -420,10 +394,10 @@ contains
     ! the rest of hi_fknew is updated according to equation of hi_fk
     do ik = 2, hi_nk
        do ix = 1, lo_nx
-          c = 0.5*hi_visc*(hi_kgrid(ik)/maxval(abs(hi_kgrid)))**2-0.5*hi_gamma(ik)
+          c = 0.5*hi_visc*(hi_kgrid(ik)/maxval(abs(hi_kgrid)))**2
           hi_fknew (ik,ix) = (hi_fk(ik,ix)*(1.0-dt*c)&
-               -dt*hi_nlk(ik,ix)-0.5*dt*hi_interaction(ik,ix))/&
-               (1.0+dt*c)
+               -dt*hi_nlk(ik,ix)-0.5*dt*hi_interaction(ik,ix)+&
+                dt*hi_gamma(ik))/(1.0+dt*c)
           ! checker                  
           if (abs(hi_fknew(ik,ix)).LE.1.0D-10) then
              hi_fknew(ik,ix) = 0.0
@@ -461,9 +435,10 @@ contains
     complex (kind=8), dimension(:), allocatable :: lo_dfk_fft
     complex (kind=8), dimension(:), allocatable :: lo_fx, lo_dfdx
     complex (kind=8), dimension(:), allocatable :: lo_nlx
+    complex (kind=8), dimension(:), allocatable :: tmpk
     integer :: istat
 
-    allocate (lo_dfk_fft(lo_nx), STAT=istat)
+    allocate (lo_dfk_fft(lo_nx), tmpk(lo_nx), STAT=istat)
     if (istat.NE.0) then
        print *, 'lo_dfk_fft is not allocated successfully'
     end if
@@ -491,19 +466,22 @@ contains
     lo_nlx = lo_fx*lo_dfdx
 
     ! forward FFT and get nonlinearity in low kappa space
-    call lo_x2k_fft (lo_nx, lo_nlx, lo_nlk)
+    call lo_x2k_fft (lo_nx, lo_nlx, tmpk)
     ! normalize
-    lo_nlk = lo_nlk/lo_nx
+    tmpk = tmpk/lo_nx
 
-    deallocate(lo_dfk_fft, lo_fx, lo_dfdx, lo_nlx)
+    lo_nlk(:lo_nk_brk) = tmpk(:lo_nk_brk)
+    lo_nlk(lo_nk_brk+1:) = tmpk(lo_nx-lo_nk+lo_nk_brk+1:)
+
+    deallocate(lo_dfk_fft, tmpk, lo_fx, lo_dfdx, lo_nlx)
     
   end subroutine get_lo_nonlinearity
 
   subroutine lo_k2x_fft (n, fk, fx)
 
-    use fftw3
-    
     implicit none
+    include 'fftw3.f'
+    
     
     integer, intent(in) :: n
     complex (kind=8), dimension(:), intent(in) :: fk
@@ -527,9 +505,9 @@ contains
   
   subroutine lo_x2k_fft (n, fx, fk)
 
-    use fftw3
-
     implicit none
+    include 'fftw3.f'
+
 
     integer, intent(in) :: n
     complex (kind=8), dimension(:), intent(in) :: fx
@@ -613,9 +591,9 @@ contains
 
   subroutine hi_k2x_fft (n, fk, fx)
     
-    use fftw3
-
     implicit none
+    include 'fftw3.f'
+
 
     integer, intent(in) :: n
     integer :: n_fft
@@ -641,9 +619,9 @@ contains
 
   subroutine hi_x2k_fft (n, fx, fk)
 
-    use fftw3
-
     implicit none
+    include 'fftw3.f'
+
 
     integer, intent(in) :: n
     integer :: n_fft

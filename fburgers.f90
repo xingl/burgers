@@ -5,11 +5,9 @@ program fullburgers
   
   use file_utils, only: init_file_utils, finish_file_utils
   
-!  use fftw3
-  
-  include 'fftw3.f03'
-  
   implicit none
+  include 'fftw3.f'
+  
   
   ! (kind=8) means value is defined with double precision
   
@@ -19,13 +17,12 @@ program fullburgers
   
   ! nx is the number of real-space grid points/modes in x-direction
   integer :: nx
-  ! Lx is the box length in x-direction
-  real (kind=8) :: Lx
+  ! lx is the box length in x-direction
+  real (kind=8) :: lx
 
   ! nstep is the number of time steps
   ! nwrite is time step interval to write to file
-  ! ntransfer is time step interval to evaluate transfer function
-  integer :: nstep, nwrite, ntransfer
+  integer :: nstep, nwrite
   ! dt is the time step size
   real :: dt
 
@@ -45,7 +42,7 @@ program fullburgers
   integer :: it
   real :: time = 0.0
   ! defining some units for file i/o
-  integer :: spectrum_unit=101, energy_unit=103, transfer_unit=102, trans_fn_unit=104
+  integer :: spectrum_unit=101, energy_unit=103
 
   ! xgrid contains location of grid points in x-direction
   real (kind=8), dimension (:), allocatable :: xgrid
@@ -60,15 +57,6 @@ program fullburgers
   real (kind=8), dimension (:), allocatable :: spectrum, spectrum_avg, spectrum_tot
   ! total_energy is total energy at each time step
   real (kind=8) :: total_energy, energy_avg=0.0
-  ! transfer is matrix of transfer function 
-  ! transfer_x is transfer function for positive k from both positive and negative k1
-  ! sub_sum has two columns, the first is the sum of transfer_x whose ik is smaller than k
-  ! the second column is the sum of transfer_x whose ik is bigger than k
-  ! part_sum has two columns, the first is the sum of transfer_x whose ik is smaller than ikf2
-  ! the second column is the sum of transfer_x whose ik is bigger than ikf2
-  real (kind=8), dimension(:,:), allocatable :: transfer, transfer_avg, transfer_tot
-  real (kind=8), dimension(:,:), allocatable :: transfer_x, transf_x_avg, transf_x_tot
-  real (kind=8), dimension(:,:), allocatable :: sub_sum, part_sum
 
   call init_file_utils
   call read_input_file
@@ -91,17 +79,6 @@ program fullburgers
   deallocate (gamma)
   deallocate (spectrum)
 
-  if (allocated(spectrum_tot)) then
-     deallocate (spectrum_tot)
-     deallocate (spectrum_avg)
-!     deallocate (transfer_tot)
-!     deallocate (transfer_avg)
-     deallocate (transf_x_tot)
-     deallocate (transf_x_avg)
-     deallocate (sub_sum)
-     deallocate (part_sum)
-  end if
-
 contains
 
   subroutine read_input_file
@@ -113,19 +90,19 @@ contains
     integer :: in_file
     logical :: exist
 
-    namelist / parameters / nx, Lx, nstep, dt, nwrite, ntransfer, &
+    namelist / parameters / nx, lx, nstep, dt, nwrite, &
          gamma1, gamma2, ikf1, ikf2, visc
 
     ! default values
 
     ! spatial grid
     nx = 4096
-    Lx = 2.0*pi
+    lx = 2.0*pi
     ! time grid
     nstep = 200
     dt = 0.001
     nwrite = 20
-    ntransfer = 50
+    !ntransfer = 50
     ! forcing
     gamma1 = 2.0
     gamma2 = 10.0
@@ -152,15 +129,15 @@ contains
     allocate (kgrid(nk), kgrid_x(2*nk-1))
 
     do ix = 1, nx
-       xgrid(ix) = (Lx*(ix-1))/nx
+       xgrid(ix) = (lx*(ix-1))/nx
     end do
 
     do ik = 1, nk
-       kgrid(ik) = (2.0*pi/Lx)*(ik-1)
+       kgrid(ik) = (2.0*pi/lx)*(ik-1)
     end do
 
     do ik = 1, (2*nk-1)
-       kgrid_x(ik) = (2.0*pi/Lx)*(ik-nk)
+       kgrid_x(ik) = (2.0*pi/lx)*(ik-nk)
     end do
 
   end subroutine init_grids
@@ -180,7 +157,6 @@ contains
     ! initialize a single k with amplitude fkinit
     fk(ikf1) = fkinit
     fk(ikf2) = fkinit
-!    fk(ikf2:ikf2+10) = fkinit*.3
 
     fknew = fk
 
@@ -198,17 +174,8 @@ contains
     call open_output_file (energy_unit,'.energy')
     write (energy_unit,'(3a12)') '# time', 'energy', 'energyavg'
 
-    call open_output_file (transfer_unit,'.transfer')
-!    write (transfer_unit,'(6a12)') '# time', 'k1', 'k2', 'trans_fn', &
-!         'maxval', 'tavg'
-    write(transfer_unit,'(6a12)') '# time', 'k', 'loc_sum', 'nloc_sum', 'low_sum', 'high_sum'
-    
-    call open_output_file (trans_fn_unit,'.transfn')
-    write (trans_fn_unit,'(7a12)') '# time', 'k1', 'k', 'trans_fn', 'tavg'
-
     allocate (spectrum(nk)) ; spectrum = 0.0
-    allocate (transfer(nk,nk)) ; transfer = 0.0
-    allocate (transfer_x(2*nk-1,nk)) ; transfer_x = 0.0
+
   end subroutine init_diagnostics
 
   subroutine init_forcing
@@ -217,8 +184,6 @@ contains
     
     allocate (gamma(nk)) ; gamma = 0.0
     gamma(ikf1) = gamma1*(1.0+zi)
-!    gamma(ikf2-5:ikf2+5) = gamma2*exp(-(kgrid(ikf2)-kgrid(ikf2-5:ikf2+5))**2/(kgrid(ikf2)-kgrid(ikf2-5))**2)
-!    gamma(ikf2:ikf2+10) = gamma2*(1.0 + (kgrid(ikf2:ikf2+10)-kgrid(ikf2))/kgrid(ikf2))
     gamma(ikf2) = gamma2*(1.0+zi)
 
   end subroutine init_forcing
@@ -309,11 +274,8 @@ contains
 
   subroutine k2x_fft (fk, fx)
 
-!    use fftw3
-
-    include 'fftw3.f03'
-
     implicit none
+    include 'fftw3.f'
 
     complex(kind=8), dimension(:), intent(in) :: fk
     complex(kind=8), dimension(:), allocatable :: a
@@ -334,11 +296,8 @@ contains
 
   subroutine x2k_fft (fx, fk)
 
-!    use fftw3
-
-    include 'fftw3.f03'
-
     implicit none
+    include 'fftw3.f'
 
     real(kind=8), dimension(:), intent(in) :: fx
     real(kind=8), dimension(:), allocatable :: b
@@ -368,44 +327,12 @@ contains
 
     call get_energy_transfer_new (step)
 
-    if (ntransfer < step .and.  mod(step,ntransfer)==0 .and. step>0) then
-       do ik1 = 1, 2*nk-1
-          do ik= 1, nk
-             write (trans_fn_unit,'(7e12.4)') time, kgrid_x(ik1), kgrid(ik), &
-                  transfer_x(ik1,ik)/total_energy, transf_x_avg(ik1,ik)!, &
-!                  sub_sum(1,ik)/total_energy, sub_sum(2,ik)/total_energy
-          end do
-          write(trans_fn_unit,*)
-       end do
-       write (trans_fn_unit,*)
-       write (trans_fn_unit,*)
-    end if
-
-    !call get_energy_transfer (step)
-
     write (energy_unit,'(3e12.4)') time, total_energy, energy_avg
 
     do ik = 1, nk
        write (spectrum_unit,'(4e12.4)') time, kgrid(ik), spectrum(ik), spectrum_avg(ik)
     end do
     write (spectrum_unit,*)
-
-    tmax = maxval(transfer)/total_energy
-    tmin = minval(transfer)/total_energy
-
-    if (ntransfer < step .and. mod(step,ntransfer)==0 .and. step>0) then
-!       do ik1 = 1, nk
-          do ik = 1, nk
-!             write (transfer_unit,'(6e12.4)') time, kgrid(ik1), kgrid(ik), &
-!                  transfer(ik1,ik)/total_energy, max(tmax,abs(tmin)), transfer_avg(ik1,ik)
-             write (transfer_unit,'(6e12.4)') time, kgrid(ik), sub_sum(1,ik)/total_energy, &
-                  sub_sum(2,ik)/total_energy, part_sum(1,ik)/total_energy, part_sum(2,ik)/total_energy
-          end do
-          write(transfer_unit,*)
-!       end do
-!       write(transfer_unit,*)
-!       write(transfer_unit,*)
-    end if
 
   end subroutine write_diagnostics
 
@@ -419,65 +346,22 @@ contains
     real (kind=8), save :: energy_tot = 0.0
     integer :: ik1, ik
 
-    if (.not.allocated(transf_x_tot)) then
+    if (.not.allocated(spectrum_tot)) then
        allocate (spectrum_tot(nk)) ; spectrum_tot = 0.0
        allocate (spectrum_avg(nk)) ; spectrum_avg = 0.0
-       allocate (transf_x_tot(2*nk-1,nk)) ; transf_x_tot = 0.0
-       allocate (transf_x_avg(2*nk-1,nk)) ; transf_x_avg = 0.0
-       allocate (sub_sum(2,nk)) ; sub_sum = 0.0
-       allocate (part_sum(2,nk)) ; part_sum = 0.0
     end if
 
     total_energy = sum(real(fknew*conjg(fknew)))*0.5
     spectrum = 0.5*real(fknew*conjg(fknew))
-
-    sub_sum = 0.0
-    transfer_x = 0.0
-    do ik = 1, nk
-       do ik1 = nk, 2*nk-1
-          if (ik1-nk-ik < 0) then
-             transfer_x(ik1, ik) = 0.5*kgrid(ik)*aimag(fknew(ik1-nk+1)*fknew(ik-ik1+nk)*conjg(fknew(ik)))
-             sub_sum(1,ik) = sub_sum(1,ik) + transfer_x(ik1,ik)
-          else
-             transfer_x(ik1, ik) = 0.5*kgrid(ik)*aimag(fknew(ik1-nk+1)*conjg(fknew(ik1-nk-ik+2))*conjg(fknew(ik)))
-             sub_sum(2,ik) = sub_sum(2,ik) + transfer_x(ik1,ik)
-          end if
-       end do
-    end do
-    
-    do ik = 1, nk
-       do ik1 = 1, nk-1
-          if (ik1-ik-1 < 0) then
-             transfer_x(ik1, ik) = 0
-          else
-             transfer_x(ik1, ik) = 0.5*kgrid(ik)*aimag(conjg(fknew(nk-ik1+1))*fknew(ik+nk-ik1)*conjg(fknew(ik)))
-             !transfer_x(ik1,ik) = transfer_x(2*nk+ik-ik1-1,ik)
-             sub_sum(2,ik) = sub_sum(2,ik) + transfer_x(ik1,ik)
-          end if
-       end do
-    end do
-
-    part_sum = 0.0
-    do ik = 1, nk
-       do ik1 = nk, 2*nk-1
-          if (kgrid_x(ik1)<kgrid(11)) then
-             part_sum(1,ik) = part_sum(1,ik) + transfer_x(ik1,ik)
-          else
-             part_sum(2,ik) = part_sum(2,ik) + transfer_x(ik1,ik)
-          end if
-       end do
-    end do
     
     if (step > nstep/5) then
        energy_tot = energy_tot + total_energy
        spectrum_tot = spectrum_tot + spectrum
-       transf_x_tot = transf_x_tot + transfer_x/total_energy
 
        navg = navg + 1
 
        energy_avg = energy_tot/navg
        spectrum_avg = spectrum_tot/navg
-       transf_x_avg = transf_x_tot/navg
 
     end if
 
@@ -493,37 +377,22 @@ contains
     integer, save :: navg = 0
     real (kind=8), save :: energy_tot = 0.0
 
- if (.not.allocated(transfer_tot)) then
-!       allocate (spectrum_tot(nk)) ; spectrum_tot = 0.0
-!       allocate (spectrum_avg(nk)) ; spectrum_avg = 0.0
-       allocate (transfer_tot(nk,nk)) ; transfer_tot = 0.0
-       allocate (transfer_avg(nk,nk)) ; transfer_avg = 0.0
+ if (.not.allocated(spectrum_tot)) then
+       allocate (spectrum_tot(nk)) ; spectrum_tot = 0.0
+       allocate (spectrum_avg(nk)) ; spectrum_avg = 0.0
     end if
 
     total_energy = sum(real(fknew*conjg(fknew)))*0.5
     spectrum = 0.5*real(fknew*conjg(fknew))
 
-    transfer = 0.0
-    do ik1 = 1, nk
-       do ik2 = 1, nk
-          if (ik1-ik2 >= 0) then
-             transfer(ik1,ik2) = 0.5*kgrid(ik2)*aimag(fknew(ik2)*conjg(fknew(ik1))*fknew(ik1-ik2+1))
-          else if (nk > 1) then
-             transfer(ik1,ik2) = 0.5*kgrid(ik2)*aimag(fknew(ik2)*conjg(fknew(ik1))*conjg(fknew(ik2-ik1+1)))
-          end if
-       end do
-    end do
-
     if (step > nstep/5) then
        energy_tot = energy_tot + total_energy
        spectrum_tot = spectrum_tot + spectrum
-       transfer_tot = transfer_tot + transfer/total_energy
 
        navg = navg + 1
 
        energy_avg = energy_tot/navg
        spectrum_avg = spectrum_tot/navg
-       transfer_avg = transfer_tot/navg
 
     end if
 
@@ -537,11 +406,6 @@ contains
 
     call close_output_file (spectrum_unit)
     call close_output_file (energy_unit)
-    call close_output_file (transfer_unit)
-    call close_output_file (trans_fn_unit)
-
-    deallocate (transfer)
-    deallocate (transfer_x)
 
   end subroutine finish_diagnostics
 
