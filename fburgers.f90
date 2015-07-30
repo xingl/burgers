@@ -146,17 +146,17 @@ contains
 
     implicit none
 
-    real :: fkinit = 1.0
+    real :: fkinit = 0.01
 
     ! allocate k-space arrays
     allocate (fk(nk), fknew(nk))
 
     ! initialize padded arrays with zeros
-    fk = 0.
+    fk = fkinit
 
     ! initialize a single k with amplitude fkinit
-    fk(ikf1) = fkinit
-    fk(ikf2) = fkinit
+    !fk(ikf1) = fkinit
+    !fk(ikf2) = fkinit
 
     fknew = fk
 
@@ -198,8 +198,8 @@ contains
 
     call get_nonlinearity (fk, nlk)
 
-    fknew = (fk-0.5*dt*nlk(:nk)) / (1.0 + 0.5*dt &
-         *(-gamma + visc*(kgrid/kgrid(nk))**2))
+    fknew = (fk-0.5*dt*nlk(:nk)+0.5*dt*gamma) / (1.0 + &
+            0.5*dt*visc*(kgrid/kgrid(nk))**2)
     ! checker
     do ik = 1, nk
        if (abs(fknew(ik)).LE.1.0D-10) then
@@ -214,8 +214,8 @@ contains
     call get_nonlinearity (fknew, nlk)
 
     ! note that hypervisc is normalized by kmax, but visc is not
-    fknew = (fk-dt*nlk(:nk)) / (1.0 + dt &
-         *(-gamma + visc*(kgrid/kgrid(nk))**2))
+    fknew = (fk-dt*nlk(:nk)+dt*gamma) / (1.0 + & 
+            dt*visc*(kgrid/kgrid(nk))**2)
 
     ! checker
     do ik = 1, nk
