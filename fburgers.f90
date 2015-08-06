@@ -44,6 +44,8 @@ program fullburgers
   ! defining some units for file i/o
   integer :: spectrum_unit=101, energy_unit=103
 
+  real :: fkinit
+
   ! xgrid contains location of grid points in x-direction
   real (kind=8), dimension (:), allocatable :: xgrid
   ! kgrid contains location of grid points in k-space
@@ -91,7 +93,7 @@ contains
     logical :: exist
 
     namelist / parameters / nx, lx, nstep, dt, nwrite, &
-         gamma1, gamma2, ikf1, ikf2, visc
+         gamma1, gamma2, ikf1, ikf2, visc, fkinit
 
     ! default values
 
@@ -110,7 +112,8 @@ contains
     ikf2 = 101
     ! dissipation
     visc = 40000
-
+    fkinit = 0.03
+ 
     in_file = input_unit_exist ("parameters", exist)
     if (exist) read (unit=input_unit("parameters"), nml=parameters)
 
@@ -146,13 +149,21 @@ contains
 
     implicit none
 
-    real :: fkinit = 0.01
+    real :: tmp
+    integer, dimension(:), allocatable :: seed
+    integer :: i, t
 
     ! allocate k-space arrays
-    allocate (fk(nk), fknew(nk))
+    allocate (fk(nk), fknew(nk), seed(1))
 
-    ! initialize padded arrays with zeros
-    fk = fkinit
+    call system_clock(t)
+    seed = t
+    call random_seed(PUT=seed)
+    
+    do i = 1, nk
+       call random_number(tmp)
+       fk(i) = tmp*fkinit
+    end do
 
     ! initialize a single k with amplitude fkinit
     !fk(ikf1) = fkinit

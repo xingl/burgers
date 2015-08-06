@@ -41,6 +41,8 @@ program tsburgers
   ! units for file i/o
   !integer :: hi_unit = 104!, lo_unit = 105
 
+  real :: lo_fkinit, hi_fkinit
+
   ! xgrid contains location of grid points on low k(kappa)-grid
   real (kind=8), dimension(:), allocatable :: xgrid
   ! lo_kgrid contains location of grid points on low k(kappa)-grid
@@ -119,7 +121,9 @@ contains
     ! lo_nx,hi_nx,nstep,nwrite,lo_ikf,hi_ikf are assumed to be integers
     ! lo_lx,hi_lx,dt,lo_visc,hi_visc,lo_gamma,hi_gamma are assumed to be real
     namelist / parameters / lo_nx, hi_nx, lo_lx, hi_lx, nstep, dt, nwrite,&
-         lo_visc, hi_visc, lo_gamma1, hi_gamma1, lo_ikf, hi_ikf
+         lo_visc, hi_visc, lo_gamma1, hi_gamma1, lo_ikf, hi_ikf, lo_fkinit,&
+         hi_fkinit
+ 
     ! default values
     ! spatial grid
     lo_nx = 64
@@ -138,6 +142,8 @@ contains
     hi_gamma1 = 100.0
     lo_ikf = 2
     hi_ikf = 2
+    lo_fkinit = 0.1
+    hi_fkinit = 0.05
     
     in_file = input_unit_exist("parameters", exist)
     if (exist) read (unit=input_unit("parameters"), nml=parameters)
@@ -202,18 +208,26 @@ contains
     
     implicit none
 
-    real (kind=8) :: fkinit = 1.0
-    integer :: ik
-
+    real :: tmp
+    integer, dimension(:), allocatable :: seed
+    integer :: i, ik, t
+       
     allocate(lo_fk(lo_nk), lo_fknew(lo_nk)) ; lo_fk = 0.0 ; lo_fknew = 0.0
     allocate(lo_fk_fft(lo_nx)) ; lo_fk_fft = 0.0
-    allocate(hi_fk(hi_nk,lo_nx), hi_fknew(hi_nk,lo_nx)) ; hi_fk = 0.0 ; hi_fknew = 0.0
-    allocate(f_k_kappa(hi_nk, lo_nk), temp(lo_nx))
+    allocate(seed(1))
 
-    ! lo_fk is initialized at the wavenumber at which forcing is applied
-    ! lo_fk is initialized in this way just to make lo_fx real, this is not necessary
-    lo_fk(lo_ikf) = fkinit
-    lo_fk(lo_nk-lo_ikf+2) = fkinit
+    call system_clock(t)
+    seed = t
+    call random_seed(PUT=seed)
+
+    ! lo_fk is initialized in this way to make lo_fx real
+    do ik = 1, lo_nk_brk
+       call random_number(tmp)
+       lo_fk(ik) = tmp*lo_fkinit
+    end do 
+    do ik = lo_nk_brk+1, lo_nk
+       lo_fk(ik) = lo_fk(lo_nk-ik+2)
+    end do
     
     ! lo_fk and hi_fk is set up in the way that IFT of lo_fk is equal to hi_fk(1,:)
     ! no rescaling here because fftw is assumed to follow the convention of magnifying
@@ -223,12 +237,22 @@ contains
     lo_fk_fft(lo_nk_brk+1:lo_nx-lo_nk+lo_nk_brk) = 0.0
     call lo_k2x_fft(lo_nx, lo_fk_fft, hi_fk(1,:))
     
+    allocate(hi_fk(hi_nk,lo_nx), hi_fknew(hi_nk,lo_nx))
+    hi_fk = 0.0 ; hi_fknew = 0.0   
     ! hi_fk is initialized at the wavenumber at which forcing is applied
-    hi_fk(hi_ikf,:) = fkinit
+    
+    do i = 1, lo_nx
+        do ik = 2, hi_nk
+                call random_number(tmp)
+                hi_fk(ik,i) = tmp*hi_fkinit
+        end do
+    end do
     
     lo_fknew = lo_fk
     hi_fknew = hi_fk
 
+
+    allocate(f_k_kappa(hi_nk, lo_nk), temp(lo_nx))
     ! First row of f_k_kappa is for k=0, therefore equal to the array of lo_fknew
     f_k_kappa(1,:) = lo_fknew(:)
     ! From the second row on, each row of f_k_kappa is calculated by FT of 
