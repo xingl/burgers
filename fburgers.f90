@@ -65,7 +65,7 @@ program fullburgers
   call init_grids
   call init_f
   call init_diagnostics
-  call init_forcing
+!  call init_forcing
 
   call write_diagnostics (step=0)
   do it = 1, nstep
@@ -193,9 +193,17 @@ contains
 
     implicit none
     
-    allocate (gamma(nk)) ; gamma = 0.0
-    gamma(ikf1) = gamma1*(1.0+zi)
-    gamma(ikf2) = gamma2*(1.0+zi)
+    real :: tmp
+
+    if (.not.allocated(gamma)) then
+       allocate (gamma(nk)) 
+       gamma = 0.0
+    end if
+
+    call random_number(tmp)
+    gamma(ikf1) = tmp*gamma1*(1.0+zi)
+    call random_number(tmp)
+    gamma(ikf2) = tmp*gamma2*(1.0+zi)
 
   end subroutine init_forcing
 
@@ -208,6 +216,7 @@ contains
     allocate (nlk(nk_fft)) ; nlk = 0.0
 
     call get_nonlinearity (fk, nlk)
+    call init_forcing
 
     fknew = (fk-0.5*dt*nlk(:nk)+0.5*dt*gamma) / (1.0 + &
             0.5*dt*visc*(kgrid/kgrid(nk))**2)
