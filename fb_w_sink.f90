@@ -207,7 +207,7 @@ contains
     call random_number(tmp)
     gamma(ikf2) = tmp*gamma2*(1.0+zi)
     call random_number(tmp)
-    gamma(iks) = tmp*sink*(1.0+zi)
+    gamma(iks) = tmp*sink
 
   end subroutine init_forcing
 

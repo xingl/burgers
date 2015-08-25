@@ -90,7 +90,7 @@ program tsburgers
   call init_grids
   call init_f
   call init_diagnostics
-!  call forcing
+!  call init_forcing
 
   call write_diagnostics
   do it = 1, nstep
@@ -234,18 +234,19 @@ contains
     ! lo_fk and hi_fk is set up in the way that IFT of lo_fk is equal to hi_fk(1,:)
     ! no rescaling here because fftw is assumed to follow the convention of magnifying
     ! at r2c and forward transformations but not at c2r or backward ones
-    lo_fk_fft(:lo_nk_brk) = lo_fk(:lo_nk_brk)
-    lo_fk_fft(lo_nx-lo_nk+lo_nk_brk+1:) = lo_fk(lo_nk_brk+1:)
-    lo_fk_fft(lo_nk_brk+1:lo_nx-lo_nk+lo_nk_brk) = 0.0
-    call lo_k2x_fft(lo_nx, lo_fk_fft, hi_fk(1,:))
+    !!!lo_fk_fft(:lo_nk_brk) = lo_fk(:lo_nk_brk)
+    !!!lo_fk_fft(lo_nx-lo_nk+lo_nk_brk+1:) = lo_fk(lo_nk_brk+1:)
+    !!!lo_fk_fft(lo_nk_brk+1:lo_nx-lo_nk+lo_nk_brk) = 0.0
+    !!!call lo_k2x_fft(lo_nx, lo_fk_fft, hi_fk(1,:))
     
     allocate(hi_fk(hi_nk,lo_nx), hi_fknew(hi_nk,lo_nx))
     hi_fk = 0.0 ; hi_fknew = 0.0   
     ! hi_fk is initialized at the wavenumber at which forcing is applied
     
     do i = 1, lo_nx
-        do ik = 2, hi_nk
-                call random_number(tmp)
+    !!!    do ik = 2, hi_nk
+       do ik = 1, hi_nk
+         call random_number(tmp)
                 hi_fk(ik,i) = tmp*hi_fkinit
         end do
     end do
@@ -294,7 +295,7 @@ contains
     
   end subroutine init_diagnostics
 
-  subroutine forcing
+  subroutine init_forcing
 
     implicit none
     real :: tmp
@@ -309,15 +310,15 @@ contains
     ! forcing gamma of lo_gamma is applied at lo_k=lo_ikf
     ! *(1.0+zi) is to have linear growth rate and oscillation frequency of same magnitude
     call random_number(tmp)
-    lo_gamma(lo_ikf) = tmp*lo_gamma1*(1.0+zi)*lo_fk(lo_ikf)
+    lo_gamma(lo_ikf) = tmp*lo_gamma1*(1.0+zi)
     ! and also lo_k = -lo_ikf to make lo_fx real
     lo_gamma(lo_nk-lo_ikf+2) = lo_gamma(lo_ikf)
 
     ! forcing gamma of hi_gamma is applied at hi_k=hi_ikf
     call random_number(tmp)
-    hi_gamma(hi_ikf) = tmp*hi_gamma1*(1.0+zi)*sum(hi_fk(hi_ikf,:))/real(lo_nx)
+    hi_gamma(hi_ikf) = tmp*hi_gamma1*(1.0+zi)
 
-  end subroutine forcing
+  end subroutine init_forcing
   
   subroutine time_advance
     
@@ -347,7 +348,7 @@ contains
     lo_interaction = 0.0 ; hi_interaction = 0.0
     !call subroutines to calculate interaction
     !call get_lo_interaction (lo_interaction)
-    call get_hi_interaction (lo_fk, hi_fk, hi_interaction)
+    !!!call get_hi_interaction (lo_fk, hi_fk, hi_interaction)
 
     ! centered scheme is used for viscosity and forcing terms
     ! (2-stage Runge-Kutta) Midpoint method is used for nonlinearity and interaction
@@ -355,7 +356,7 @@ contains
 
     ! update of lo_fknew is split into two do loops because
     ! lo_nlk array have different indexing than lo_fk and others
-    call forcing
+    call init_forcing
 
     do ik = 1, lo_nk 
        c = 0.5*lo_visc*(lo_kgrid(ik)/maxval(abs(hi_kgrid)))**2+&
@@ -374,13 +375,14 @@ contains
     end do
 
     ! update hi_fknew(1,:) with IFT of lo_fknew
-    lo_fk_fft(:lo_nk_brk) = lo_fknew(:lo_nk_brk)
-    lo_fk_fft(lo_nx-lo_nk+lo_nk_brk+1:) = lo_fknew(lo_nk_brk+1:)
-    lo_fk_fft(lo_nk_brk+1:lo_nx-lo_nk+lo_nk_brk) = 0.0
-    call lo_k2x_fft(lo_nx, lo_fk_fft, hi_fknew(1,:))
+    !!!lo_fk_fft(:lo_nk_brk) = lo_fknew(:lo_nk_brk)
+    !!!lo_fk_fft(lo_nx-lo_nk+lo_nk_brk+1:) = lo_fknew(lo_nk_brk+1:)
+    !!!lo_fk_fft(lo_nk_brk+1:lo_nx-lo_nk+lo_nk_brk) = 0.0
+    !!!call lo_k2x_fft(lo_nx, lo_fk_fft, hi_fknew(1,:))
 
     ! the rest follows from equation of hi_fk
-    do ik = 2, hi_nk
+    !!!do ik = 2, hi_nk
+     do ik = 1, hi_nk  
        do ix = 1, lo_nx
           c = 0.5*hi_visc*(hi_kgrid(ik)/maxval(abs(hi_kgrid)))**2+&
               0.5*hi_hypvisc*(hi_kgrid(ik)/maxval(abs(hi_kgrid)))**4
@@ -405,7 +407,7 @@ contains
     
     ! call subroutines to calculate interactions from lo_fknew and hi_fknew
     !call get_lo_interaction (lo_interaction)
-    call get_hi_interaction (lo_fknew, hi_fknew, hi_interaction)
+    !!!call get_hi_interaction (lo_fknew, hi_fknew, hi_interaction)
 
     ! update with full time step
     do ik = 1, lo_nk
@@ -425,13 +427,14 @@ contains
     end do
     
     ! update hi_fknew(1,:) with IFT of lo_fknew
-    lo_fk_fft(:lo_nk_brk) = lo_fknew(:lo_nk_brk)
-    lo_fk_fft(lo_nx-lo_nk+lo_nk_brk+1:) = lo_fknew(lo_nk_brk+1:)
-    lo_fk_fft(lo_nk_brk+1:lo_nx-lo_nk+lo_nk_brk) = 0.0
-    call lo_k2x_fft(lo_nx, lo_fk_fft, hi_fknew(1,:))
+    !!!lo_fk_fft(:lo_nk_brk) = lo_fknew(:lo_nk_brk)
+    !!!lo_fk_fft(lo_nx-lo_nk+lo_nk_brk+1:) = lo_fknew(lo_nk_brk+1:)
+    !!!lo_fk_fft(lo_nk_brk+1:lo_nx-lo_nk+lo_nk_brk) = 0.0
+    !!!call lo_k2x_fft(lo_nx, lo_fk_fft, hi_fknew(1,:))
 
     ! the rest of hi_fknew is updated according to equation of hi_fk
-    do ik = 2, hi_nk
+    !!!do ik = 2, hi_nk
+    do ik = 1, hi_nk
        do ix = 1, lo_nx
           c = 0.5*hi_visc*(hi_kgrid(ik)/maxval(abs(hi_kgrid)))**2+&
               0.5*hi_hypvisc*(hi_kgrid(ik)/maxval(abs(hi_kgrid)))**4

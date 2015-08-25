@@ -213,18 +213,13 @@ contains
     
     complex (kind=8), dimension (:), allocatable :: nlk
     integer :: ik
-    real :: c
     allocate (nlk(nk_fft)) ; nlk = 0.0
 
     call get_nonlinearity (fk, nlk)
     call init_forcing
 
-    do ik = 1,nk
-       c = 0.5*visc*(kgrid(ik)/kgrid(nk))**2-0.5*gamma(ik)
-       fknew(ik) = (fk(ik)*(1.0-0.5*dt*c)-0.5*dt*nlk(ik)) / (1.0 + &
-               0.5*dt*c)
-    end do
-
+    fknew = (fk-0.5*dt*nlk(:nk)+0.5*dt*gamma) / (1.0 + &
+            0.5*dt*visc*(kgrid/kgrid(nk))**2)
     ! checker
     do ik = 1, nk
        if (abs(fknew(ik)).LE.1.0D-10) then
@@ -239,12 +234,8 @@ contains
     call get_nonlinearity (fknew, nlk)
 
     ! note that hypervisc is normalized by kmax, but visc is not
-    
-    do ik = 1,nk
-       c = 0.5*visc*(kgrid(ik)/kgrid(nk))**2-0.5*gamma(ik)
-       fknew(ik) = (fk(ik)*(1.0-dt*c)-dt*nlk(ik)) / (1.0 + & 
-            dt*c)
-    end do
+    fknew = (fk-dt*nlk(:nk)+dt*gamma) / (1.0 + & 
+            dt*visc*(kgrid/kgrid(nk))**2)
 
     ! checker
     do ik = 1, nk

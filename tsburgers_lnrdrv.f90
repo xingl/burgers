@@ -90,7 +90,7 @@ program tsburgers
   call init_grids
   call init_f
   call init_diagnostics
-!  call forcing
+!  call init_forcing
 
   call write_diagnostics
   do it = 1, nstep
@@ -294,7 +294,7 @@ contains
     
   end subroutine init_diagnostics
 
-  subroutine forcing
+  subroutine init_forcing
 
     implicit none
     real :: tmp
@@ -309,15 +309,15 @@ contains
     ! forcing gamma of lo_gamma is applied at lo_k=lo_ikf
     ! *(1.0+zi) is to have linear growth rate and oscillation frequency of same magnitude
     call random_number(tmp)
-    lo_gamma(lo_ikf) = tmp*lo_gamma1*(1.0+zi)*lo_fk(lo_ikf)
+    lo_gamma(lo_ikf) = tmp*lo_gamma1*(1.0+zi)
     ! and also lo_k = -lo_ikf to make lo_fx real
     lo_gamma(lo_nk-lo_ikf+2) = lo_gamma(lo_ikf)
 
     ! forcing gamma of hi_gamma is applied at hi_k=hi_ikf
     call random_number(tmp)
-    hi_gamma(hi_ikf) = tmp*hi_gamma1*(1.0+zi)*sum(hi_fk(hi_ikf,:))/real(lo_nx)
+    hi_gamma(hi_ikf) = tmp*hi_gamma1*(1.0+zi)
 
-  end subroutine forcing
+  end subroutine init_forcing
   
   subroutine time_advance
     
@@ -355,7 +355,7 @@ contains
 
     ! update of lo_fknew is split into two do loops because
     ! lo_nlk array have different indexing than lo_fk and others
-    call forcing
+    call init_forcing
 
     do ik = 1, lo_nk 
        c = 0.5*lo_visc*(lo_kgrid(ik)/maxval(abs(hi_kgrid)))**2+&
