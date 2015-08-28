@@ -436,7 +436,7 @@ contains
           c = 0.5*hi_visc*(hi_kgrid(ik)/maxval(abs(hi_kgrid)))**2+&
               0.5*hi_hypvisc*(hi_kgrid(ik)/maxval(abs(hi_kgrid)))**4
           hi_fknew (ik,ix) = (hi_fk(ik,ix)*(1.0-dt*c)&
-               -dt*hi_nlk(ik,ix)-0.5*dt*hi_interaction(ik,ix)+&
+               -dt*hi_nlk(ik,ix)-dt*hi_interaction(ik,ix)+&
                 dt*hi_gamma(ik))/(1.0+dt*c)
           ! checker                  
           if (abs(hi_fknew(ik,ix)).LE.1.0D-10) then
